@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>হাজি মোদাচ্ছের ক্লথ স্টোর - ডিজিটাল খতিয়ান</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        :root { --primary: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d); --nav-blue: #1a2a6c; --accent: #27ae60; --border: #000; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 10px; background: #f0f2f5; color: #333; }
+        .container { max-width: 1200px; margin: auto; background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); }
+        header { text-align: center; border-bottom: 3px double #1a2a6c; margin-bottom: 20px; padding-bottom: 10px; }
+        
+        .search-container { margin: 15px 0; display: flex; gap: 10px; }
+        #searchInput { flex-grow: 1; padding: 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; outline: none; transition: 0.3s; }
+        #searchInput:focus { border-color: var(--nav-blue); box-shadow: 0 0 8px rgba(26,42,108,0.2); }
+
+        .index-table { width: 100%; border-collapse: collapse; margin-top: 15px; overflow: hidden; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        .index-table th, .index-table td { border: 1px solid #eee; padding: 15px; text-align: left; }
+        .index-table th { background: var(--nav-blue); color: white; text-transform: uppercase; font-size: 14px; }
+        .index-table tr:hover { background-color: #f9f9f9; }
+
+        .btn { padding: 8px 16px; cursor: pointer; border: none; border-radius: 6px; color: white; font-weight: bold; font-size: 13px; transition: 0.2s; display: inline-flex; align-items: center; gap: 5px; }
+        .btn-add-row { background: var(--accent); width: 100%; margin-top: 0; border-radius: 0; border-top: 1px solid var(--border); }
+        .btn-view { background: #3498db; }
+        .btn-delete { background: #e74c3c; margin-left: 5px; }
+        
+        .month-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 15px 0; background: #eef2f3; padding: 12px; border-radius: 8px; }
+        .month-btn { padding: 8px 16px; cursor: pointer; border: 1px solid #bdc3c7; background: #fff; border-radius: 20px; font-size: 13px; font-weight: 500; }
+        .month-btn.active { background: var(--nav-blue); color: white; border-color: var(--nav-blue); }
+
+        .ledger-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px; }
+        .col { border: 2px solid var(--border); display: flex; flex-direction: column; min-height: 600px; border-radius: 8px; overflow: hidden; }
+        .col h3 { background: var(--border); color: white; margin: 0; padding: 12px; text-align: center; font-size: 18px; }
+        
+        .ledger-table { width: 100%; border-collapse: collapse; flex-grow: 1; table-layout: fixed; }
+        .ledger-table th, .ledger-table td { border: 1px solid #ccc; padding: 10px; text-align: center; font-size: 15px; width: 33.33%; word-wrap: break-word; }
+        .ledger-table th { background: #f2f2f2; font-weight: bold; }
+        
+        .jer-row { background: #e8f5e9; font-weight: bold; color: #2e7d32; }
+        .total-box { background: #fdfd96; font-weight: bold; padding: 12px; text-align: center; border-top: 2px solid var(--border); font-size: 18px; color: #000; }
+        .balance-summary { margin-top: 15px; padding: 15px; border-radius: 8px; background: #2c3e50; color: white; text-align: center; font-size: 24px; font-weight: bold; }
+
+        .hidden { display: none; }
+        @media print { 
+            .no-print { display: none; } 
+            .container { box-shadow: none; border: none; width: 100%; padding: 0; } 
+            .col { border: 2px solid #000; min-height: auto; } 
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1 style="margin: 0; color: #1a2a6c;">হাজি মোদাচ্ছের ক্লথ স্টোর</h1>
+        <p style="margin: 5px 0; font-weight: bold;">সদন্দ্বীপ, চট্টগ্রাম | ডিজিটাল খতিয়ান</p>
+    </header>
+
+    <div id="indexSection">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h3 style="margin: 0;">খতিয়ান সূচিপত্র (সার্ভার এডিশন)</h3>
+            <button class="btn btn-view" style="background:var(--accent)" onclick="addNewAccount()">✚ নতুন হিসাব</button>
+        </div>
+        <div class="search-container no-print">
+            <input type="text" id="searchInput" placeholder="খতিয়ানের নাম বা ঠিকানা দিয়ে খুঁজুন..." onkeyup="filterAccounts()">
+        </div>
+        <table class="index-table">
+            <thead>
+                <tr>
+                    <th style="width: 60px;">ক্রমিক</th>
+                    <th>নাম</th>
+                    <th>ঠিকানা</th>
+                    <th>সাং</th>
+                    <th class="no-print" style="width: 180px;">অ্যাকশন</th>
+                </tr>
+            </thead>
+            <tbody id="indexBody"></tbody>
+        </table>
+    </div>
+
+    <div id="ledgerSection" class="hidden">
+        <div class="no-print" style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+            <button class="btn" style="background: #7f8c8d;" onclick="showIndex()">⬅ সূচিপত্র</button>
+            <div style="display:flex; gap: 10px; align-items:center;">
+                <button class="btn" style="background: #e67e22;" onclick="changeYear()">বছর: <span id="displayYear">২০২৬</span> ✎</button>
+                <button class="btn" style="background: #000;" onclick="window.print()">🖨️ প্রিন্ট</button>
+            </div>
+        </div>
+        <h2 id="currentAccName" style="text-align: center; margin: 10px 0; color: var(--nav-blue); text-decoration: underline;"></h2>
+        <div class="month-tabs no-print" id="monthTabs"></div>
+        <div class="ledger-grid">
+            <div class="col">
+                <h3 id="leftHeader">বাম পাশ</h3>
+                <table class="ledger-table" id="leftTable">
+                    <thead><tr><th>তারিখ</th><th>বিবরণ</th><th>টাকা</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+                <button class="btn btn-add-row no-print" onclick="addRow('left')">✚ হিসাব যোগ করুন</button>
+                <div class="total-box">মোট: <span id="leftSum">০</span></div>
+            </div>
+            <div class="col">
+                <h3 id="rightHeader">ডান পাশ</h3>
+                <table class="ledger-table" id="rightTable">
+                    <thead><tr><th>তারিখ</th><th>বিবরণ</th><th>টাকা</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+                <button class="btn btn-add-row no-print" onclick="addRow('right')">✚ হিসাব যোগ করুন</button>
+                <div class="total-box">মোট: <span id="rightSum">০</span></div>
+            </div>
+        </div>
+        <div class="balance-summary">অবশিষ্ট জের: <span id="netBalance">০</span></div>
+    </div>
+</div>
+
+<script>
+    // Firebase Configuration (Directly linked to your server)
+    const firebaseConfig = {
+        apiKey: "AIzaSyB-4NWcWQgw5vkAnq8r1gZKzM-nS53hIeQ",
+        authDomain: "haji-cloth-store.firebaseapp.com",
+        databaseURL: "https://haji-cloth-store-default-rtdb.firebaseio.com",
+        projectId: "haji-cloth-store",
+        storageBucket: "haji-cloth-store.firebasestorage.app",
+        messagingSenderId: "944010988937",
+        appId: "1:944010988937:web:3e5339759862691312a558"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    let accounts = [];
+    let activeAccIdx = null;
+    let activeMonth = new Date().getMonth();
+    let activeYear = new Date().getFullYear();
+    const monthNames = ["জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন", "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর"];
+
+    // Cloud থেকে ডাটা লোড করার ফাংশন
+    function syncFromCloud() {
+        db.ref('ledger_data').on('value', snap => {
+            accounts = snap.val() || [
+                { name: "দৈনিক মাল বিক্রয় ও দৈনিক খরচ", address: "দোকান", sang: "সদন্দ্বীপ", type: "daily", years: {} }
+            ];
+            renderIndex();
+            if(activeAccIdx !== null) loadMonthData();
+        });
+    }
+
+    function renderIndex() {
+        const body = document.getElementById('indexBody');
+        body.innerHTML = accounts.map((acc, i) => `
+            <tr class="account-row">
+                <td>${i + 1}</td>
+                <td><strong>${acc.name}</strong></td>
+                <td>${acc.address || '-'}</td>
+                <td>${acc.sang || '-'}</td>
+                <td class="no-print">
+                    <button class="btn btn-view" onclick="openAccount(${i})">দেখুন</button>
+                    <button class="btn" style="background:#f39c12; margin-left:5px; padding:5px 8px;" onclick="editAccountInfo(${i})">✎</button>
+                    <button class="btn btn-delete" onclick="deleteAccount(${i})">🗑️</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function filterAccounts() {
+        let input = document.getElementById('searchInput').value.toLowerCase();
+        document.querySelectorAll('.account-row').forEach(row => {
+            row.style.display = row.innerText.toLowerCase().includes(input) ? '' : 'none';
+        });
+    }
+
+    function deleteAccount(i) {
+        if(confirm("সব ডাটা মুছে যাবে! আপনি কি নিশ্চিত?")) {
+            accounts.splice(i, 1);
+            saveToCloud();
+        }
+    }
+
+    function changeYear() {
+        const newYear = prompt("কোন বছরের হিসাব দেখতে চান?", activeYear);
+        if (newYear && !isNaN(newYear)) {
+            activeYear = parseInt(newYear);
+            document.getElementById('displayYear').innerText = activeYear;
+            loadMonthData();
+        }
+    }
+
+    function openAccount(idx) {
+        activeAccIdx = idx;
+        document.getElementById('indexSection').classList.add('hidden');
+        document.getElementById('ledgerSection').classList.remove('hidden');
+        document.getElementById('currentAccName').innerText = accounts[idx].name;
+        document.getElementById('displayYear').innerText = activeYear;
+
+        if (accounts[idx].type === 'daily') {
+            document.getElementById('leftHeader').innerText = "দৈনিক খরচ";
+            document.getElementById('rightHeader').innerText = "দৈনিক মাল বিক্রয়";
+        } else {
+            document.getElementById('leftHeader').innerText = "জমা";
+            document.getElementById('rightHeader').innerText = "খরচ";
+        }
+        renderMonths();
+        loadMonthData();
+    }
+
+    function renderMonths() {
+        const tabs = document.getElementById('monthTabs');
+        tabs.innerHTML = monthNames.map((m, i) => `
+            <div class="month-btn ${i === activeMonth ? 'active' : ''}" onclick="activeMonth=${i}; renderMonths(); loadMonthData();">${m}</div>
+        `).join('');
+    }
+
+    function getPrevBalance() {
+        let pm = activeMonth - 1, py = activeYear;
+        if (pm < 0) { pm = 11; py = activeYear - 1; }
+        const acc = accounts[activeAccIdx];
+        if (acc.years && acc.years[py] && acc.years[py][pm]) {
+            const data = acc.years[py][pm];
+            const leftT = (data.left || []).reduce((s, r) => s + (parseFloat(r.amt) || 0), 0);
+            const rightT = (data.right || []).reduce((s, r) => s + (parseFloat(r.amt) || 0), 0);
+            return { left: leftT, right: rightT };
+        }
+        return { left: 0, right: 0 };
+    }
+
+    function addRow(side) {
+        let m = (activeMonth + 1).toString().padStart(2, '0');
+        const date = prompt("তারিখ লিখুন:", ` /${m}/${activeYear}`);
+        if (!date) return;
+        const amt = parseFloat(prompt("টাকার পরিমাণ:"));
+        if (isNaN(amt)) return;
+        const desc = prompt("বিবরণ:") || "-";
+
+        if (!accounts[activeAccIdx].years) accounts[activeAccIdx].years = {};
+        if (!accounts[activeAccIdx].years[activeYear]) accounts[activeAccIdx].years[activeYear] = {};
+        if (!accounts[activeAccIdx].years[activeYear][activeMonth]) accounts[activeAccIdx].years[activeYear][activeMonth] = { left: [], right: [] };
+        if (!accounts[activeAccIdx].years[activeYear][activeMonth][side]) accounts[activeAccIdx].years[activeYear][activeMonth][side] = [];
+        
+        accounts[activeAccIdx].years[activeYear][activeMonth][side].push({ date, desc, amt });
+        saveToCloud();
+    }
+
+    function loadMonthData() {
+        const acc = accounts[activeAccIdx];
+        const currentData = (acc.years && acc.years[activeYear] && acc.years[activeYear][activeMonth]) 
+                            ? acc.years[activeYear][activeMonth] : { left: [], right: [] };
+        const prevBal = getPrevBalance();
+
+        const fillTable = (id, list, jerAmt) => {
+            const tbody = document.querySelector(`#${id} tbody`);
+            let html = jerAmt > 0 ? `<tr class="jer-row"><td>-</td><td>বিগত জের</td><td>${jerAmt}</td></tr>` : "";
+            html += (list || []).map((item, i) => `<tr onclick="editEntry('${id.includes('left') ? 'left' : 'right'}', ${i})" style="cursor:pointer;"><td>${item.date}</td><td>${item.desc}</td><td>${item.amt}</td></tr>`).join('');
+            tbody.innerHTML = html;
+            return (list || []).reduce((sum, row) => sum + (parseFloat(row.amt) || 0), 0) + jerAmt;
+        };
+
+        const tL = fillTable('leftTable', currentData.left, prevBal.left);
+        const tR = fillTable('rightTable', currentData.right, prevBal.right);
+        document.getElementById('leftSum').innerText = tL.toLocaleString('bn-BD');
+        document.getElementById('rightSum').innerText = tR.toLocaleString('bn-BD');
+        document.getElementById('netBalance').innerText = Math.abs(tL - tR).toLocaleString('bn-BD') + " টাকা";
+    }
+
+    function editEntry(side, i) {
+        const item = accounts[activeAccIdx].years[activeYear][activeMonth][side][i];
+        const nAmt = parseFloat(prompt("টাকা সংশোধন:", item.amt));
+        if (!isNaN(nAmt)) {
+            accounts[activeAccIdx].years[activeYear][activeMonth][side][i] = { date: prompt("তারিখ সংশোধন:", item.date), desc: prompt("বিবরণ সংশোধন:", item.desc), amt: nAmt };
+            saveToCloud();
+        } else if (confirm("মুছে ফেলতে চান?")) {
+            accounts[activeAccIdx].years[activeYear][activeMonth][side].splice(i, 1);
+            saveToCloud();
+        }
+    }
+
+    function addNewAccount() {
+        const name = prompt("নতুন খতিয়ানের নাম:");
+        if (name) {
+            accounts.push({ name, address: prompt("ঠিকানা:"), sang: prompt("সাং:"), type: "party", years: {} });
+            saveToCloud();
+        }
+    }
+
+    function editAccountInfo(i) {
+        const n = prompt("নাম সংশোধন:", accounts[i].name);
+        if (n) {
+            accounts[i].name = n;
+            accounts[i].address = prompt("ঠিকানা সংশোধন:", accounts[i].address);
+            accounts[i].sang = prompt("সাং সংশোধন:", accounts[i].sang);
+            saveToCloud();
+        }
+    }
+
+    function showIndex() {
+        activeAccIdx = null;
+        document.getElementById('indexSection').classList.remove('hidden');
+        document.getElementById('ledgerSection').classList.add('hidden');
+    }
+
+    function saveToCloud() {
+        db.ref('ledger_data').set(accounts);
+    }
+
+    // উইন্ডো লোড হলে ক্লাউড থেকে ডাটা নিয়ে আসবে
+    window.onload = syncFromCloud;
+</script>
+</body>
+</html>
