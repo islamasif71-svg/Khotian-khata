@@ -3,32 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>হাজি মোদাচ্ছের ক্লথ স্টোর - ডিজিটাল খতিয়ান</title>
-    
+    <title>খতিয়ান খাতা | হাজি মোদাচ্ছের ক্লথ স্টোর</title>
+
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
 
     <style>
-        :root { --primary: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d); --nav-blue: #1a2a6c; --accent: #27ae60; --border: #000; }
+        :root { --nav-blue: #1a2a6c; --accent: #27ae60; --border: #000; }
         body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 10px; background: #f0f2f5; color: #333; }
         .container { max-width: 1200px; margin: auto; background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); }
         header { text-align: center; border-bottom: 3px double #1a2a6c; margin-bottom: 20px; padding-bottom: 10px; }
-        
+
         .search-container { margin: 15px 0; display: flex; gap: 10px; }
         #searchInput { flex-grow: 1; padding: 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; outline: none; transition: 0.3s; }
         #searchInput:focus { border-color: var(--nav-blue); box-shadow: 0 0 8px rgba(26,42,108,0.2); }
 
-        .index-table { width: 100%; border-collapse: collapse; margin-top: 15px; overflow: hidden; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        .index-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .index-table { width: 100%; border-collapse: collapse; margin-top: 15px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
         .index-table th, .index-table td { border: 1px solid #eee; padding: 15px; text-align: left; }
         .index-table th { background: var(--nav-blue); color: white; text-transform: uppercase; font-size: 14px; }
         .index-table tr:hover { background-color: #f9f9f9; }
 
         .btn { padding: 8px 16px; cursor: pointer; border: none; border-radius: 6px; color: white; font-weight: bold; font-size: 13px; transition: 0.2s; display: inline-flex; align-items: center; gap: 5px; }
-        .btn-add-row { background: var(--accent); width: 100%; margin-top: 0; border-radius: 0; border-top: 1px solid var(--border); }
+        .btn-add-row { background: var(--accent); width: 100%; margin-top: 0; border-radius: 0; border-top: 1px solid var(--border); justify-content: center; padding: 12px; }
         .btn-view { background: #3498db; }
         .btn-delete { background: #e74c3c; margin-left: 5px; }
-        
+
         .month-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 15px 0; background: #eef2f3; padding: 12px; border-radius: 8px; }
         .month-btn { padding: 8px 16px; cursor: pointer; border: 1px solid #bdc3c7; background: #fff; border-radius: 20px; font-size: 13px; font-weight: 500; }
         .month-btn.active { background: var(--nav-blue); color: white; border-color: var(--nav-blue); }
@@ -36,24 +37,60 @@
         .ledger-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px; }
         .col { border: 2px solid var(--border); display: flex; flex-direction: column; min-height: 600px; border-radius: 8px; overflow: hidden; }
         .col h3 { background: var(--border); color: white; margin: 0; padding: 12px; text-align: center; font-size: 18px; }
-        
+
         .ledger-table { width: 100%; border-collapse: collapse; flex-grow: 1; table-layout: fixed; }
         .ledger-table th, .ledger-table td { border: 1px solid #ccc; padding: 10px; text-align: center; font-size: 15px; width: 33.33%; word-wrap: break-word; }
         .ledger-table th { background: #f2f2f2; font-weight: bold; }
-        
+
         .jer-row { background: #e8f5e9; font-weight: bold; color: #2e7d32; }
         .total-box { background: #fdfd96; font-weight: bold; padding: 12px; text-align: center; border-top: 2px solid var(--border); font-size: 18px; color: #000; }
         .balance-summary { margin-top: 15px; padding: 15px; border-radius: 8px; background: #2c3e50; color: white; text-align: center; font-size: 24px; font-weight: bold; }
 
+        .loading { text-align: center; padding: 30px; color: #7f8c8d; font-size: 16px; }
         .hidden { display: none; }
-        @media print { 
-            .no-print { display: none; } 
-            .container { box-shadow: none; border: none; width: 100%; padding: 0; } 
-            .col { border: 2px solid #000; min-height: auto; } 
+
+        /* ১ নম্বর fix: indicator আলাদা position */
+        .saving-indicator { position: fixed; top: 10px; right: 10px; background: #27ae60; color: white; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: bold; display: none; z-index: 999; }
+        .error-indicator  { position: fixed; top: 10px; right: 10px; background: #e74c3c; color: white; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: bold; display: none; z-index: 999; }
+        .closing-error    { position: fixed; top: 50px; right: 10px; background: #e67e22; color: white; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: bold; display: none; z-index: 999; cursor: pointer; }
+
+        @media (max-width: 768px) {
+            body { margin: 5px; font-size: 14px; }
+            .container { padding: 10px; border-radius: 8px; }
+            header h1 { font-size: 18px; }
+            header p { font-size: 13px; }
+            .index-table { font-size: 13px; }
+            .index-table th, .index-table td { padding: 8px 6px; }
+            #ledgerSection > div:first-child { flex-wrap: wrap; gap: 8px; }
+            .month-tabs { gap: 4px; padding: 8px; }
+            .month-btn { padding: 6px 10px; font-size: 12px; }
+            .ledger-grid { grid-template-columns: 1fr; gap: 15px; }
+            .col { min-height: 300px; }
+            .col h3 { font-size: 15px; padding: 10px; }
+            .ledger-table th, .ledger-table td { padding: 7px 5px; font-size: 13px; }
+            .total-box { font-size: 15px; padding: 8px; }
+            .balance-summary { font-size: 18px; padding: 12px; }
+            .btn { font-size: 12px; padding: 7px 12px; }
+            #searchInput { font-size: 14px; padding: 9px; }
+        }
+        @media (max-width: 400px) {
+            header h1 { font-size: 15px; }
+            .ledger-table th, .ledger-table td { font-size: 12px; padding: 5px 3px; }
+            .balance-summary { font-size: 15px; }
+        }
+        @media print {
+            .no-print, .saving-indicator, .error-indicator, .closing-error { display: none !important; }
+            .container { box-shadow: none; border: none; width: 100%; padding: 0; }
+            .col { border: 2px solid #000; min-height: auto; }
         }
     </style>
 </head>
 <body>
+
+<!-- ১ নম্বর fix: আলাদা position, ৬ নম্বর fix: print এ hidden -->
+<div class="saving-indicator" id="savingIndicator">💾 সংরক্ষণ হচ্ছে...</div>
+<div class="error-indicator"  id="errorIndicator">❌ সংরক্ষণ ব্যর্থ! আবার চেষ্টা করুন।</div>
+<div class="closing-error"    id="closingErrorBanner">⚠️ জের সংরক্ষণ ব্যর্থ! চাপুন।</div>
 
 <div class="container">
     <header>
@@ -63,62 +100,70 @@
 
     <div id="indexSection">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-            <h3 style="margin: 0;">খতিয়ান সূচিপত্র (সার্ভার এডিশন)</h3>
-            <button class="btn btn-view" style="background:var(--accent)" onclick="addNewAccount()">✚ নতুন হিসাব</button>
+            <h3 style="margin: 0;">খতিয়ান সূচিপত্র</h3>
+            <button class="btn" style="background:var(--accent)" onclick="addNewAccount()">✚ নতুন হিসাব</button>
         </div>
         <div class="search-container no-print">
-            <input type="text" id="searchInput" placeholder="খতিয়ানের নাম বা ঠিকানা দিয়ে খুঁজুন..." onkeyup="filterAccounts()">
+            <input type="text" id="searchInput" placeholder="নাম বা ঠিকানা দিয়ে খুঁজুন..." oninput="filterAccounts()">
         </div>
-        <table class="index-table">
-            <thead>
-                <tr>
-                    <th style="width: 60px;">ক্রমিক</th>
-                    <th>নাম</th>
-                    <th>ঠিকানা</th>
-                    <th>সাং</th>
-                    <th class="no-print" style="width: 180px;">অ্যাকশন</th>
-                </tr>
-            </thead>
-            <tbody id="indexBody"></tbody>
-        </table>
+        <div id="indexLoading" class="loading">লগইন যাচাই হচ্ছে...</div>
+        <div class="index-table-wrap">
+            <table class="index-table">
+                <thead>
+                    <tr>
+                        <th style="width: 50px;">ক্রমিক</th>
+                        <th>নাম</th>
+                        <th>ঠিকানা</th>
+                        <th>সাং</th>
+                        <th class="no-print" style="width: 190px;">অ্যাকশন</th>
+                    </tr>
+                </thead>
+                <tbody id="indexBody"></tbody>
+            </table>
+        </div>
     </div>
 
     <div id="ledgerSection" class="hidden">
-        <div class="no-print" style="display: flex; justify-content: space-between; margin-bottom: 15px;">
-            <button class="btn" style="background: #7f8c8d;" onclick="showIndex()">⬅ সূচিপত্র</button>
-            <div style="display:flex; gap: 10px; align-items:center;">
-                <button class="btn" style="background: #e67e22;" onclick="changeYear()">বছর: <span id="displayYear">২০২৬</span> ✎</button>
-                <button class="btn" style="background: #000;" onclick="window.print()">🖨️ প্রিন্ট</button>
+        <div class="no-print" style="display:flex; justify-content:space-between; margin-bottom:15px; flex-wrap:wrap; gap:8px;">
+            <button class="btn" style="background:#7f8c8d;" onclick="showIndex()">⬅ সূচিপত্র</button>
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <button class="btn" style="background:#e67e22;" onclick="changeYear()">বছর: <span id="displayYear"></span> ✎</button>
+                <button class="btn" style="background:#000;" onclick="window.print()">🖨️ প্রিন্ট</button>
             </div>
         </div>
-        <h2 id="currentAccName" style="text-align: center; margin: 10px 0; color: var(--nav-blue); text-decoration: underline;"></h2>
+        <h2 id="currentAccName" style="text-align:center; margin:10px 0; color:var(--nav-blue); text-decoration:underline;"></h2>
         <div class="month-tabs no-print" id="monthTabs"></div>
-        <div class="ledger-grid">
-            <div class="col">
-                <h3 id="leftHeader">বাম পাশ</h3>
-                <table class="ledger-table" id="leftTable">
-                    <thead><tr><th>তারিখ</th><th>বিবরণ</th><th>টাকা</th></tr></thead>
-                    <tbody></tbody>
-                </table>
-                <button class="btn btn-add-row no-print" onclick="addRow('left')">✚ হিসাব যোগ করুন</button>
-                <div class="total-box">মোট: <span id="leftSum">০</span></div>
+        <div id="ledgerLoading" class="loading hidden">মাসের ডাটা লোড হচ্ছে...</div>
+        <div id="ledgerContent" class="hidden">
+            <div class="ledger-grid">
+                <div class="col">
+                    <h3 id="leftHeader">বাম পাশ</h3>
+                    <table class="ledger-table" id="leftTable">
+                        <thead><tr><th>তারিখ</th><th>বিবরণ</th><th>টাকা</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                    <button class="btn btn-add-row no-print" onclick="addRow('left')">✚ হিসাব যোগ করুন</button>
+                    <div class="total-box">মোট: <span id="leftSum">০</span></div>
+                </div>
+                <div class="col">
+                    <h3 id="rightHeader">ডান পাশ</h3>
+                    <table class="ledger-table" id="rightTable">
+                        <thead><tr><th>তারিখ</th><th>বিবরণ</th><th>টাকা</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                    <button class="btn btn-add-row no-print" onclick="addRow('right')">✚ হিসাব যোগ করুন</button>
+                    <div class="total-box">মোট: <span id="rightSum">০</span></div>
+                </div>
             </div>
-            <div class="col">
-                <h3 id="rightHeader">ডান পাশ</h3>
-                <table class="ledger-table" id="rightTable">
-                    <thead><tr><th>তারিখ</th><th>বিবরণ</th><th>টাকা</th></tr></thead>
-                    <tbody></tbody>
-                </table>
-                <button class="btn btn-add-row no-print" onclick="addRow('right')">✚ হিসাব যোগ করুন</button>
-                <div class="total-box">মোট: <span id="rightSum">০</span></div>
-            </div>
+            <div class="balance-summary">অবশিষ্ট জের: <span id="netBalance">০</span></div>
         </div>
-        <div class="balance-summary">অবশিষ্ট জের: <span id="netBalance">০</span></div>
     </div>
 </div>
 
 <script>
-    // Firebase Configuration (Directly linked to your server)
+    // ============================================================
+    // Firebase Config
+    // ============================================================
     const firebaseConfig = {
         apiKey: "AIzaSyB-4NWcWQgw5vkAnq8r1gZKzM-nS53hIeQ",
         authDomain: "haji-cloth-store.firebaseapp.com",
@@ -128,189 +173,730 @@
         messagingSenderId: "944010988937",
         appId: "1:944010988937:web:3e5339759862691312a558"
     };
-
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // Auth check — Main Code থেকে login না করলে ঢুকতে পারবে না
-    firebase.auth().onAuthStateChanged(function(user) {
-        if (user === null) { window.location.href = 'https://islamasif71-svg.github.io/MAIN-POS/'; }
-    });
-    let accounts = [];
-    let activeAccIdx = null;
-    let activeMonth = new Date().getMonth();
-    let activeYear = new Date().getFullYear();
-    const monthNames = ["জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন", "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর"];
+    // ============================================================
+    // Firebase Structure:
+    // KhatiyanKhata/
+    //   accounts/ACC_KEY/info: { name, address, sang, type }
+    //   accounts/ACC_KEY/years/YEAR/MONTH: { left:[], right:[] }
+    //   account_keys/ACC_KEY: true
+    //   meta/list_ts: timestamp
+    //   meta/month_ts/ACC_KEY/YEAR/MONTH: timestamp
+    //   meta/closing/ACC_KEY/YEAR/MONTH: { left, right }
+    //   meta/closing_ts/ACC_KEY/YEAR/MONTH: timestamp
+    // ============================================================
 
-    // Cloud থেকে ডাটা লোড করার ফাংশন
-    function syncFromCloud() {
-        db.ref('ledger_data').on('value', snap => {
-            accounts = snap.val() || [
-                { name: "দৈনিক মাল বিক্রয় ও দৈনিক খরচ", address: "দোকান", sang: "সদন্দ্বীপ", type: "daily", years: {} }
-            ];
-            renderIndex();
-            if(activeAccIdx !== null) loadMonthData();
-        });
+    // ============================================================
+    // State
+    // ============================================================
+    let accountsList     = [];
+    let activeAccKey     = null;
+    let activeMonth      = new Date().getMonth();
+    let activeYear       = new Date().getFullYear();
+    let currentMonthData = { left: [], right: [] };
+    let prevClosing      = { left: 0, right: 0 };
+    let isSaving         = false;
+    let pendingSave      = false;
+    let loadCounter      = 0;
+    let authReady        = false; // ২১ নম্বর fix
+
+    const monthNames = ["জানুয়ারি","ফেব্রুয়ারি","মার্চ","এপ্রিল","মে","জুন","জুলাই","আগস্ট","সেপ্টেম্বর","অক্টোবর","নভেম্বর","ডিসেম্বর"];
+
+    // ============================================================
+    // localStorage helpers
+    // ============================================================
+    function lsSet(key, val) { try { localStorage.setItem(key, val); } catch(e) {} }
+    function lsGet(key)      { try { return localStorage.getItem(key); } catch(e) { return null; } }
+    function lsRemove(key)   { try { localStorage.removeItem(key); } catch(e) {} }
+
+    const LS_LIST_KEY    = 'hm_ledger_list';
+    const LS_LIST_TS_KEY = 'hm_ledger_list_ts';
+    const lsMonthKey     = function(k,y,m){ return 'hm_month_'      + k + '_' + y + '_' + m; };
+    const lsMonthTsKey   = function(k,y,m){ return 'hm_mts_'        + k + '_' + y + '_' + m; };
+    const lsClosingKey   = function(k,y,m){ return 'hm_closing_'    + k + '_' + y + '_' + m; };
+    const lsClosingTsKey = function(k,y,m){ return 'hm_closing_ts_' + k + '_' + y + '_' + m; };
+
+    // ============================================================
+    // XSS safe
+    // ============================================================
+    function esc(str) {
+        return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
+    // ============================================================
+    // ১৫ নম্বর fix: টাকার হিসাব floating point safe
+    // ============================================================
+    function toTaka(num) {
+        return Math.round((parseFloat(num) || 0) * 100) / 100;
+    }
+    function formatTaka(num) {
+        return toTaka(num).toLocaleString('bn-BD');
+    }
+
+    // ============================================================
+    // Indicators — ১ নম্বর fix: আলাদা position
+    // ============================================================
+    function showSaving() {
+        document.getElementById('savingIndicator').style.display = 'block';
+        document.getElementById('errorIndicator').style.display  = 'none';
+    }
+    function showSaved() {
+        document.getElementById('savingIndicator').style.display = 'none';
+    }
+    function showError() {
+        document.getElementById('savingIndicator').style.display = 'none';
+        document.getElementById('errorIndicator').style.display  = 'block';
+        setTimeout(function(){ document.getElementById('errorIndicator').style.display = 'none'; }, 4000);
+    }
+
+    // ============================================================
+    // AUTH — একবারই syncAccountList call হবে
+    // ============================================================
+    firebase.auth().onAuthStateChanged(function(user) {
+        if (user === null) {
+            window.location.href = 'https://islamasif71-svg.github.io/MAIN-POS/';
+        } else if (!authReady) {
+            authReady = true;
+            syncAccountList();
+        }
+    });
+
+    // ============================================================
+    // ৮ নম্বর fix: পেজ লোডে পুরানো cache পরিষ্কার
+    // ============================================================
+    function cleanOldCache() {
+        var nowYear = new Date().getFullYear();
+        // একবারই পড়ো
+        var cachedList = [];
+        try {
+            var raw = lsGet(LS_LIST_KEY);
+            if (raw) cachedList = JSON.parse(raw);
+        } catch(e) {}
+        if (cachedList.length === 0) return;
+
+        // ১০ বছরের বেশি পুরানো cache মুছো
+        for (var y = nowYear - 15; y < nowYear - 10; y++) {
+            for (var m = 0; m < 12; m++) {
+                cachedList.forEach(function(acc) {
+                    lsRemove(lsMonthKey(acc.key, y, m));
+                    lsRemove(lsMonthTsKey(acc.key, y, m));
+                    lsRemove(lsClosingKey(acc.key, y, m));
+                    lsRemove(lsClosingTsKey(acc.key, y, m));
+                });
+            }
+        }
+    }
+
+    // ============================================================
+    // STEP 1: Account list
+    // ============================================================
+    async function syncAccountList() {
+        cleanOldCache();
+        document.getElementById('indexLoading').classList.remove('hidden');
+
+        let firebaseTs = 0;
+        try {
+            const snap = await db.ref('KhatiyanKhata/meta/list_ts').once('value');
+            firebaseTs = snap.val() || 0;
+        } catch(e) {}
+
+        const localTs = parseInt(lsGet(LS_LIST_TS_KEY) || '0');
+
+        // Cache হিট
+        if (firebaseTs !== 0 && firebaseTs === localTs) {
+            const cached = lsGet(LS_LIST_KEY);
+            if (cached) {
+                try {
+                    accountsList = JSON.parse(cached);
+                    renderIndex();
+                    document.getElementById('indexLoading').classList.add('hidden');
+                    return;
+                } catch(e) {}
+            }
+        }
+
+        // Cache miss — KhatiyanKhata/account_keys থেকে key list, তারপর info
+        try {
+            const keysSnap = await db.ref('KhatiyanKhata/account_keys').once('value');
+            const keysData = keysSnap.val() || {};
+            const keys = Object.keys(keysData);
+
+            if (keys.length === 0) {
+                accountsList = [];
+            } else {
+                // ১৩ নম্বর fix: Promise.all এ individual failure handle
+                const infoSnaps = await Promise.all(
+                    keys.map(function(k) {
+                        return db.ref('KhatiyanKhata/accounts/' + k + '/info').once('value')
+                            .catch(function() { return { val: function(){ return {}; } }; });
+                    })
+                );
+                accountsList = keys.map(function(key, i) {
+                    const info = infoSnaps[i].val() || {};
+                    return {
+                        key:     key,
+                        name:    info.name    || '',
+                        address: info.address || '',
+                        sang:    info.sang    || '',
+                        type:    info.type    || 'party'
+                    };
+                }).filter(function(acc){ return acc.name !== ''; }); // blank info বাদ
+            }
+            lsSet(LS_LIST_KEY, JSON.stringify(accountsList));
+            lsSet(LS_LIST_TS_KEY, String(firebaseTs));
+        } catch(e) {
+            // Firebase fail — localStorage fallback
+            const cached = lsGet(LS_LIST_KEY);
+            if (cached) {
+                try { accountsList = JSON.parse(cached); } catch(e2) { accountsList = []; }
+            } else {
+                accountsList = [];
+            }
+        }
+
+        renderIndex();
+        document.getElementById('indexLoading').classList.add('hidden');
+    }
+
+    // ============================================================
+    // STEP 2: Month data — stale response guard
+    // ============================================================
+    async function loadMonthFromCloud(accKey, year, month) {
+        const myCounter = ++loadCounter;
+
+        document.getElementById('ledgerLoading').classList.remove('hidden');
+        document.getElementById('ledgerContent').classList.add('hidden');
+
+        // ১২ নম্বর fix: try/catch যোগ
+        try {
+            const monthData = await fetchMonth(accKey, year, month);
+
+            let pm = month - 1, py = year;
+            if (pm < 0) { pm = 11; py = year - 1; }
+            const closing = await fetchClosing(accKey, py, pm);
+
+            if (myCounter !== loadCounter) return;
+
+            currentMonthData = monthData;
+            prevClosing      = closing;
+
+            document.getElementById('ledgerLoading').classList.add('hidden');
+            document.getElementById('ledgerContent').classList.remove('hidden');
+            renderLedger();
+        } catch(e) {
+            if (myCounter !== loadCounter) return;
+            document.getElementById('ledgerLoading').classList.add('hidden');
+            document.getElementById('ledgerContent').classList.remove('hidden');
+            alert('ডাটা লোড করতে সমস্যা হয়েছে। পেজ রিফ্রেশ করুন।');
+        }
+    }
+
+    // ============================================================
+    // fetchMonth
+    // ============================================================
+    async function fetchMonth(accKey, year, month) {
+        const fbTsPath = 'KhatiyanKhata/meta/month_ts/' + accKey + '/' + year + '/' + month;
+        const lsTsKey  = lsMonthTsKey(accKey, year, month);
+        const lsKey    = lsMonthKey(accKey, year, month);
+
+        let firebaseTs = 0;
+        try {
+            const snap = await db.ref(fbTsPath).once('value');
+            firebaseTs = snap.val() || 0;
+        } catch(e) {}
+
+        const localTs = parseInt(lsGet(lsTsKey) || '-1');
+
+        if (firebaseTs !== 0 && firebaseTs === localTs) {
+            const cached = lsGet(lsKey);
+            if (cached) { try { return JSON.parse(cached); } catch(e) {} }
+        }
+
+        if (firebaseTs === 0) return { left: [], right: [] };
+
+        let data = { left: [], right: [] };
+        try {
+            const snap = await db.ref('KhatiyanKhata/accounts/' + accKey + '/years/' + year + '/' + month).once('value');
+            const val = snap.val();
+            if (val) {
+                data.left  = Array.isArray(val.left)  ? val.left  : [];
+                data.right = Array.isArray(val.right) ? val.right : [];
+            }
+            lsSet(lsKey, JSON.stringify(data));
+            lsSet(lsTsKey, String(firebaseTs));
+        } catch(e) {
+            const cached = lsGet(lsKey);
+            if (cached) { try { return JSON.parse(cached); } catch(e2) {} }
+        }
+
+        return data;
+    }
+
+    // ============================================================
+    // fetchClosing
+    // ============================================================
+    async function fetchClosing(accKey, year, month) {
+        const lsKey   = lsClosingKey(accKey, year, month);
+        const lsTsKey = lsClosingTsKey(accKey, year, month);
+
+        let firebaseTs = 0;
+        try {
+            const snap = await db.ref('KhatiyanKhata/meta/closing_ts/' + accKey + '/' + year + '/' + month).once('value');
+            firebaseTs = snap.val() || 0;
+        } catch(e) {}
+
+        const localTs = parseInt(lsGet(lsTsKey) || '-1');
+
+        if (firebaseTs !== 0 && firebaseTs === localTs) {
+            const cached = lsGet(lsKey);
+            if (cached) { try { return JSON.parse(cached); } catch(e) {} }
+        }
+
+        if (firebaseTs === 0) return { left: 0, right: 0 };
+
+        let closing = { left: 0, right: 0 };
+        try {
+            const snap = await db.ref('KhatiyanKhata/meta/closing/' + accKey + '/' + year + '/' + month).once('value');
+            const val = snap.val();
+            if (val) {
+                closing.left  = toTaka(val.left  || 0);
+                closing.right = toTaka(val.right || 0);
+            }
+            lsSet(lsKey, JSON.stringify(closing));
+            lsSet(lsTsKey, String(firebaseTs));
+        } catch(e) {
+            const cached = lsGet(lsKey);
+            if (cached) { try { return JSON.parse(cached); } catch(e2) {} }
+        }
+
+        return closing;
+    }
+
+    // ============================================================
+    // saveClosingBalance — error throw করে retry কাজ করে
+    // ============================================================
+    async function saveClosingBalance(accKey, year, month, data, prevCl) {
+        // ১৫ নম্বর fix: toTaka দিয়ে floating point safe
+        const thisLeft  = (data.left  || []).reduce(function(s,r){ return s + toTaka(r.amt); }, 0);
+        const thisRight = (data.right || []).reduce(function(s,r){ return s + toTaka(r.amt); }, 0);
+
+        const closing = {
+            left:  toTaka(thisLeft  + (prevCl.left  || 0)),
+            right: toTaka(thisRight + (prevCl.right || 0))
+        };
+
+        const closingTs = Date.now();
+        // error throw করছি — retry কাজ করবে
+        await db.ref('KhatiyanKhata/meta/closing/'    + accKey + '/' + year + '/' + month).set(closing);
+        await db.ref('KhatiyanKhata/meta/closing_ts/' + accKey + '/' + year + '/' + month).set(closingTs);
+        lsSet(lsClosingKey(accKey, year, month),   JSON.stringify(closing));
+        lsSet(lsClosingTsKey(accKey, year, month), String(closingTs));
+
+        return closing;
+    }
+
+    // ============================================================
+    // saveClosingWithRetry — ৩ বার চেষ্টা
+    // ============================================================
+    async function saveClosingWithRetry(accKey, year, month, data, prevCl) {
+        for (var attempt = 1; attempt <= 3; attempt++) {
+            try {
+                return await saveClosingBalance(accKey, year, month, data, prevCl);
+            } catch(e) {
+                if (attempt === 3) {
+                    showClosingError(accKey, year, month, data, prevCl);
+                    return null;
+                }
+                await new Promise(function(r){ setTimeout(r, 1000 * attempt); });
+            }
+        }
+        return null;
+    }
+
+    function showClosingError(accKey, year, month, data, prevCl) {
+        document.getElementById('errorIndicator').style.display = 'none';
+        var el = document.getElementById('closingErrorBanner');
+        el.style.display = 'block';
+        el.onclick = async function() {
+            el.style.display = 'none';
+            var result = await saveClosingWithRetry(accKey, year, month, data, prevCl);
+            if (result) {
+                await updateFutureClosings(accKey, year, month, result);
+                showSaved();
+            }
+        };
+    }
+
+    // ============================================================
+    // saveMonthToCloud — queue system, snapshot
+    // ============================================================
+    async function saveMonthToCloud() {
+        // ৩ নম্বর fix: activeAccKey null check
+        if (!activeAccKey) return;
+
+        if (isSaving) {
+            pendingSave = true;
+            return;
+        }
+        isSaving    = true;
+        pendingSave = false;
+        showSaving();
+
+        // snapshot
+        const dataToSave = JSON.parse(JSON.stringify(currentMonthData));
+        const accKey     = activeAccKey;
+        const year       = activeYear;
+        const month      = activeMonth;
+        const prevCl     = JSON.parse(JSON.stringify(prevClosing));
+
+        try {
+            const ts = Date.now();
+            await db.ref('KhatiyanKhata/accounts/' + accKey + '/years/' + year + '/' + month).set(dataToSave);
+            await db.ref('KhatiyanKhata/meta/month_ts/' + accKey + '/' + year + '/' + month).set(ts);
+
+            lsSet(lsMonthKey(accKey, year, month),   JSON.stringify(dataToSave));
+            lsSet(lsMonthTsKey(accKey, year, month), String(ts));
+
+            const thisCl = await saveClosingWithRetry(accKey, year, month, dataToSave, prevCl);
+            showSaved();
+            if (thisCl) {
+                await updateFutureClosings(accKey, year, month, thisCl);
+            }
+        } catch(e) {
+            showError();
+        } finally {
+            isSaving = false;
+            if (pendingSave) {
+                pendingSave = false;
+                saveMonthToCloud();
+            }
+        }
+    }
+
+    // ============================================================
+    // updateFutureClosings
+    // ============================================================
+    async function updateFutureClosings(accKey, year, month, prevCl) {
+        var m = month + 1, y = year;
+        if (m > 11) { m = 0; y = year + 1; }
+
+        var nowYear  = new Date().getFullYear();
+        var nowMonth = new Date().getMonth();
+        var runningPrev = prevCl;
+
+        while (y < nowYear || (y === nowYear && m <= nowMonth)) {
+            var fbTs = 0;
+            try {
+                var snap = await db.ref('KhatiyanKhata/meta/month_ts/' + accKey + '/' + y + '/' + m).once('value');
+                fbTs = snap.val() || 0;
+            } catch(e) {}
+
+            if (fbTs !== 0) {
+                var monthData = await fetchMonth(accKey, y, m);
+                var result    = await saveClosingWithRetry(accKey, y, m, monthData, runningPrev);
+                if (result) runningPrev = result;
+            }
+
+            m++;
+            if (m > 11) { m = 0; y++; }
+        }
+    }
+
+    // ============================================================
+    // ৮ নম্বর fix: clearAccountCache ১০ বছর
+    // ============================================================
+    function clearAccountCache(key) {
+        lsRemove(LS_LIST_KEY);
+        lsRemove(LS_LIST_TS_KEY);
+        var nowYear = new Date().getFullYear();
+        for (var y = nowYear - 10; y <= nowYear; y++) {
+            for (var m = 0; m < 12; m++) {
+                lsRemove(lsMonthKey(key, y, m));
+                lsRemove(lsMonthTsKey(key, y, m));
+                lsRemove(lsClosingKey(key, y, m));
+                lsRemove(lsClosingTsKey(key, y, m));
+            }
+        }
+    }
+
+    // ============================================================
+    // UI
+    // ============================================================
     function renderIndex() {
-        const body = document.getElementById('indexBody');
-        body.innerHTML = accounts.map((acc, i) => `
-            <tr class="account-row">
-                <td>${i + 1}</td>
-                <td><strong>${acc.name}</strong></td>
-                <td>${acc.address || '-'}</td>
-                <td>${acc.sang || '-'}</td>
-                <td class="no-print">
-                    <button class="btn btn-view" onclick="openAccount(${i})">দেখুন</button>
-                    <button class="btn" style="background:#f39c12; margin-left:5px; padding:5px 8px;" onclick="editAccountInfo(${i})">✎</button>
-                    <button class="btn btn-delete" onclick="deleteAccount(${i})">🗑️</button>
-                </td>
-            </tr>
-        `).join('');
+        var body = document.getElementById('indexBody');
+        if (accountsList.length === 0) {
+            body.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#7f8c8d;">কোনো হিসাব নেই। নতুন হিসাব যোগ করুন।</td></tr>';
+            return;
+        }
+        body.innerHTML = accountsList.map(function(acc, i) {
+            return '<tr class="account-row">' +
+                '<td>' + (i+1) + '</td>' +
+                '<td><strong>' + esc(acc.name) + '</strong></td>' +
+                '<td>' + esc(acc.address || '-') + '</td>' +
+                '<td>' + esc(acc.sang    || '-') + '</td>' +
+                '<td class="no-print">' +
+                    '<button class="btn btn-view" onclick="openAccount(\'' + esc(acc.key) + '\')">দেখুন</button>' +
+                    '<button class="btn" style="background:#f39c12;margin-left:5px;padding:5px 8px;" onclick="editAccountInfo(\'' + esc(acc.key) + '\')">✎</button>' +
+                    '<button class="btn btn-delete" onclick="deleteAccount(\'' + esc(acc.key) + '\')">🗑️</button>' +
+                '</td>' +
+            '</tr>';
+        }).join('');
     }
 
     function filterAccounts() {
-        let input = document.getElementById('searchInput').value.toLowerCase();
-        document.querySelectorAll('.account-row').forEach(row => {
+        var input = (document.getElementById('searchInput').value || '').toLowerCase();
+        document.querySelectorAll('.account-row').forEach(function(row) {
             row.style.display = row.innerText.toLowerCase().includes(input) ? '' : 'none';
         });
     }
 
-    function deleteAccount(i) {
-        if(confirm("সব ডাটা মুছে যাবে! আপনি কি নিশ্চিত?")) {
-            accounts.splice(i, 1);
-            saveToCloud();
+    function openAccount(key) {
+        var acc = accountsList.find(function(a){ return a.key === key; });
+        if (!acc) { alert('হিসাব খুঁজে পাওয়া যাচ্ছে না।'); return; }
+
+        activeAccKey = key;
+        document.getElementById('indexSection').classList.add('hidden');
+        document.getElementById('ledgerSection').classList.remove('hidden');
+        document.getElementById('currentAccName').innerText = acc.name;
+        document.getElementById('displayYear').innerText    = activeYear;
+
+        if (acc.type === 'daily') {
+            document.getElementById('leftHeader').innerText  = "মাল বিক্রয়";
+            document.getElementById('rightHeader').innerText = "মাল খরিদ";
+        } else {
+            document.getElementById('leftHeader').innerText  = "জমা";
+            document.getElementById('rightHeader').innerText = "খরচ";
+        }
+        renderMonths();
+        loadMonthFromCloud(activeAccKey, activeYear, activeMonth);
+    }
+
+    function renderMonths() {
+        document.getElementById('monthTabs').innerHTML = monthNames.map(function(m, i) {
+            return '<div class="month-btn ' + (i === activeMonth ? 'active' : '') + '" ' +
+                'onclick="activeMonth=' + i + '; renderMonths(); loadMonthFromCloud(activeAccKey, activeYear, activeMonth);">' +
+                m + '</div>';
+        }).join('');
+    }
+
+    function renderLedger() {
+        var jerLeft  = prevClosing.left  || 0;
+        var jerRight = prevClosing.right || 0;
+
+        function fillTable(id, list, jerAmt) {
+            var tbody = document.querySelector('#' + id + ' tbody');
+            var side  = id.includes('left') ? 'left' : 'right';
+            var html  = jerAmt > 0
+                ? '<tr class="jer-row"><td>-</td><td>বিগত জের</td><td>' + formatTaka(jerAmt) + '</td></tr>'
+                : '';
+            html += (list || []).map(function(item, i) {
+                // ১৫ নম্বর fix: toTaka দিয়ে format
+                var amtFmt = formatTaka(item.amt);
+                return '<tr onclick="editEntry(\'' + side + '\',' + i + ')" style="cursor:pointer;">' +
+                    '<td>' + esc(item.date) + '</td>' +
+                    '<td>' + esc(item.desc) + '</td>' +
+                    '<td>' + amtFmt + '</td>' +
+                    '</tr>';
+            }).join('');
+            tbody.innerHTML = html;
+            return toTaka((list || []).reduce(function(s,r){ return s + toTaka(r.amt); }, 0) + jerAmt);
+        }
+
+        var tL = fillTable('leftTable',  currentMonthData.left,  jerLeft);
+        var tR = fillTable('rightTable', currentMonthData.right, jerRight);
+        document.getElementById('leftSum').innerText    = formatTaka(tL);
+        document.getElementById('rightSum').innerText   = formatTaka(tR);
+        document.getElementById('netBalance').innerText = formatTaka(Math.abs(tL - tR)) + ' টাকা';
+    }
+
+    async function addRow(side) {
+        // ৩ নম্বর fix: null check
+        if (!activeAccKey) return;
+
+        var dd   = String(new Date().getDate()).padStart(2,'0');
+        var mm   = String(activeMonth + 1).padStart(2,'0');
+        // ১০ নম্বর fix: date trim ও empty check
+        var date = (prompt('তারিখ লিখুন (দিন/মাস/বছর):', dd + '/' + mm + '/' + activeYear) || '').trim();
+        if (!date) return;
+
+        var amtRaw = prompt('টাকার পরিমাণ:');
+        if (amtRaw === null) return;
+        var amt = toTaka(amtRaw);
+        if (isNaN(amt) || amt === 0) { alert('সঠিক টাকার পরিমাণ দিন।'); return; }
+        if (amt < 0) { if (!confirm('ঋণাত্মক পরিমাণ যোগ করবেন?')) return; }
+
+        var desc = prompt('বিবরণ:');
+        if (desc === null) return;
+
+        if (!currentMonthData.left)  currentMonthData.left  = [];
+        if (!currentMonthData.right) currentMonthData.right = [];
+        currentMonthData[side].push({ date: date, desc: (desc || '-').trim(), amt: amt });
+        renderLedger();
+        await saveMonthToCloud();
+    }
+
+    async function editEntry(side, i) {
+        // ১৪ নম্বর fix: item null check
+        if (!currentMonthData[side] || !currentMonthData[side][i]) {
+            alert('এন্ট্রি খুঁজে পাওয়া যাচ্ছে না। পেজ রিফ্রেশ করুন।');
+            return;
+        }
+        var item   = currentMonthData[side][i];
+        var action = confirm('সম্পাদনা করতে OK চাপুন।\nমুছে ফেলতে Cancel চাপুন।');
+
+        if (action) {
+            var amtRaw = prompt('টাকার পরিমাণ:', item.amt);
+            if (amtRaw === null) return;
+            var nAmt = toTaka(amtRaw);
+            if (isNaN(nAmt) || nAmt === 0) { alert('সঠিক টাকার পরিমাণ দিন।'); return; }
+
+            // ১০ নম্বর fix: date trim
+            var nDate = (prompt('তারিখ:', item.date) || '').trim();
+            if (!nDate) return;
+
+            var nDesc = prompt('বিবরণ:', item.desc);
+            if (nDesc === null) return;
+
+            currentMonthData[side][i] = { date: nDate, desc: (nDesc || '-').trim(), amt: nAmt };
+            renderLedger();
+            await saveMonthToCloud();
+        } else {
+            if (confirm('নিশ্চিতভাবে মুছে ফেলতে চান?')) {
+                // ২ নম্বর fix: save আগে, render পরে
+                currentMonthData[side].splice(i, 1);
+                await saveMonthToCloud();
+                renderLedger();
+            }
+        }
+    }
+
+    async function addNewAccount() {
+        var name = (prompt('নতুন খতিয়ানের নাম:') || '').trim();
+        if (!name) return;
+        var address    = (prompt('ঠিকানা:') || '').trim();
+        var sang       = (prompt('সাং:')     || '').trim();
+        var typeChoice = confirm('দৈনিক মাল বিক্রয় ও মাল খরিদ হিসাব হলে OK চাপুন।\nসাধারণ জমা/খরচ হলে Cancel চাপুন।');
+        var type       = typeChoice ? 'daily' : 'party';
+
+        showSaving();
+        try {
+            var newRef = db.ref('KhatiyanKhata/accounts').push();
+            var key    = newRef.key;
+            var info   = { name: name, address: address, sang: sang, type: type };
+
+            await newRef.child('info').set(info);
+            await db.ref('KhatiyanKhata/account_keys/' + key).set(true);
+            var ts = Date.now();
+            await db.ref('KhatiyanKhata/meta/list_ts').set(ts);
+
+            accountsList.push({ key: key, name: name, address: address, sang: sang, type: type });
+            lsSet(LS_LIST_KEY, JSON.stringify(accountsList));
+            lsSet(LS_LIST_TS_KEY, String(ts));
+            renderIndex();
+            showSaved();
+        } catch(e) {
+            showError();
+        }
+    }
+
+    async function editAccountInfo(key) {
+        var acc = accountsList.find(function(a){ return a.key === key; });
+        if (!acc) return;
+
+        var n = (prompt('নাম সংশোধন:', acc.name) || '').trim();
+        if (!n) return;
+
+        var newAddress = (prompt('ঠিকানা সংশোধন:', acc.address) || '').trim();
+        var newSang    = (prompt('সাং সংশোধন:', acc.sang) || '').trim();
+        var typeChoice = confirm('দৈনিক মাল বিক্রয় ও মাল খরিদ হলে OK।\nসাধারণ জমা/খরচ হলে Cancel।');
+        var newType    = typeChoice ? 'daily' : 'party';
+
+        // Firebase fail হলে rollback এর জন্য পুরানো মান রেখে দাও
+        var oldName    = acc.name;
+        var oldAddress = acc.address;
+        var oldSang    = acc.sang;
+        var oldType    = acc.type;
+
+        acc.name    = n;
+        acc.address = newAddress;
+        acc.sang    = newSang;
+        acc.type    = newType;
+
+        showSaving();
+        try {
+            await db.ref('KhatiyanKhata/accounts/' + key + '/info').set({ name: acc.name, address: acc.address, sang: acc.sang, type: acc.type });
+            var ts = Date.now();
+            await db.ref('KhatiyanKhata/meta/list_ts').set(ts);
+            lsSet(LS_LIST_KEY, JSON.stringify(accountsList));
+            lsSet(LS_LIST_TS_KEY, String(ts));
+            renderIndex();
+            showSaved();
+        } catch(e) {
+            // Firebase fail — পুরানো মান ফিরিয়ে দাও
+            acc.name    = oldName;
+            acc.address = oldAddress;
+            acc.sang    = oldSang;
+            acc.type    = oldType;
+            showError();
+        }
+    }
+
+    async function deleteAccount(key) {
+        if (!confirm('সব ডাটা মুছে যাবে! আপনি কি নিশ্চিত?')) return;
+
+        showSaving();
+        try {
+            await db.ref('KhatiyanKhata/accounts/'    + key).remove();
+            await db.ref('KhatiyanKhata/account_keys/' + key).remove();
+            await db.ref('KhatiyanKhata/meta/month_ts/'   + key).remove();
+            await db.ref('KhatiyanKhata/meta/closing/'     + key).remove();
+            await db.ref('KhatiyanKhata/meta/closing_ts/'  + key).remove();
+            var ts = Date.now();
+            await db.ref('KhatiyanKhata/meta/list_ts').set(ts);
+
+            clearAccountCache(key);
+            accountsList = accountsList.filter(function(a){ return a.key !== key; });
+            lsSet(LS_LIST_KEY, JSON.stringify(accountsList));
+            lsSet(LS_LIST_TS_KEY, String(ts));
+
+            // ১১ নম্বর fix: delete করলে ledger থেকে বের হয়ে যাও
+            if (activeAccKey === key) {
+                showIndex();
+            }
+
+            renderIndex();
+            showSaved();
+        } catch(e) {
+            showError();
         }
     }
 
     function changeYear() {
-        const newYear = prompt("কোন বছরের হিসাব দেখতে চান?", activeYear);
-        if (newYear && !isNaN(newYear)) {
-            activeYear = parseInt(newYear);
-            document.getElementById('displayYear').innerText = activeYear;
-            loadMonthData();
-        }
-    }
-
-    function openAccount(idx) {
-        activeAccIdx = idx;
-        document.getElementById('indexSection').classList.add('hidden');
-        document.getElementById('ledgerSection').classList.remove('hidden');
-        document.getElementById('currentAccName').innerText = accounts[idx].name;
+        var newYear = prompt('কোন বছরের হিসাব দেখতে চান?', activeYear);
+        if (!newYear) return;
+        var y = parseInt(newYear);
+        if (isNaN(y) || y < 2000 || y > 2100) { alert('সঠিক বছর দিন (২০০০ - ২১০০)।'); return; }
+        activeYear = y;
         document.getElementById('displayYear').innerText = activeYear;
-
-        if (accounts[idx].type === 'daily') {
-            document.getElementById('leftHeader').innerText = "দৈনিক খরচ";
-            document.getElementById('rightHeader').innerText = "দৈনিক মাল বিক্রয়";
-        } else {
-            document.getElementById('leftHeader').innerText = "জমা";
-            document.getElementById('rightHeader').innerText = "খরচ";
-        }
-        renderMonths();
-        loadMonthData();
-    }
-
-    function renderMonths() {
-        const tabs = document.getElementById('monthTabs');
-        tabs.innerHTML = monthNames.map((m, i) => `
-            <div class="month-btn ${i === activeMonth ? 'active' : ''}" onclick="activeMonth=${i}; renderMonths(); loadMonthData();">${m}</div>
-        `).join('');
-    }
-
-    function getPrevBalance() {
-        let pm = activeMonth - 1, py = activeYear;
-        if (pm < 0) { pm = 11; py = activeYear - 1; }
-        const acc = accounts[activeAccIdx];
-        if (acc.years && acc.years[py] && acc.years[py][pm]) {
-            const data = acc.years[py][pm];
-            const leftT = (data.left || []).reduce((s, r) => s + (parseFloat(r.amt) || 0), 0);
-            const rightT = (data.right || []).reduce((s, r) => s + (parseFloat(r.amt) || 0), 0);
-            return { left: leftT, right: rightT };
-        }
-        return { left: 0, right: 0 };
-    }
-
-    function addRow(side) {
-        let m = (activeMonth + 1).toString().padStart(2, '0');
-        const date = prompt("তারিখ লিখুন:", ` /${m}/${activeYear}`);
-        if (!date) return;
-        const amt = parseFloat(prompt("টাকার পরিমাণ:"));
-        if (isNaN(amt)) return;
-        const desc = prompt("বিবরণ:") || "-";
-
-        if (!accounts[activeAccIdx].years) accounts[activeAccIdx].years = {};
-        if (!accounts[activeAccIdx].years[activeYear]) accounts[activeAccIdx].years[activeYear] = {};
-        if (!accounts[activeAccIdx].years[activeYear][activeMonth]) accounts[activeAccIdx].years[activeYear][activeMonth] = { left: [], right: [] };
-        if (!accounts[activeAccIdx].years[activeYear][activeMonth][side]) accounts[activeAccIdx].years[activeYear][activeMonth][side] = [];
-        
-        accounts[activeAccIdx].years[activeYear][activeMonth][side].push({ date, desc, amt });
-        saveToCloud();
-    }
-
-    function loadMonthData() {
-        const acc = accounts[activeAccIdx];
-        const currentData = (acc.years && acc.years[activeYear] && acc.years[activeYear][activeMonth]) 
-                            ? acc.years[activeYear][activeMonth] : { left: [], right: [] };
-        const prevBal = getPrevBalance();
-
-        const fillTable = (id, list, jerAmt) => {
-            const tbody = document.querySelector(`#${id} tbody`);
-            let html = jerAmt > 0 ? `<tr class="jer-row"><td>-</td><td>বিগত জের</td><td>${jerAmt}</td></tr>` : "";
-            html += (list || []).map((item, i) => `<tr onclick="editEntry('${id.includes('left') ? 'left' : 'right'}', ${i})" style="cursor:pointer;"><td>${item.date}</td><td>${item.desc}</td><td>${item.amt}</td></tr>`).join('');
-            tbody.innerHTML = html;
-            return (list || []).reduce((sum, row) => sum + (parseFloat(row.amt) || 0), 0) + jerAmt;
-        };
-
-        const tL = fillTable('leftTable', currentData.left, prevBal.left);
-        const tR = fillTable('rightTable', currentData.right, prevBal.right);
-        document.getElementById('leftSum').innerText = tL.toLocaleString('bn-BD');
-        document.getElementById('rightSum').innerText = tR.toLocaleString('bn-BD');
-        document.getElementById('netBalance').innerText = Math.abs(tL - tR).toLocaleString('bn-BD') + " টাকা";
-    }
-
-    function editEntry(side, i) {
-        const item = accounts[activeAccIdx].years[activeYear][activeMonth][side][i];
-        const nAmt = parseFloat(prompt("টাকা সংশোধন:", item.amt));
-        if (!isNaN(nAmt)) {
-            accounts[activeAccIdx].years[activeYear][activeMonth][side][i] = { date: prompt("তারিখ সংশোধন:", item.date), desc: prompt("বিবরণ সংশোধন:", item.desc), amt: nAmt };
-            saveToCloud();
-        } else if (confirm("মুছে ফেলতে চান?")) {
-            accounts[activeAccIdx].years[activeYear][activeMonth][side].splice(i, 1);
-            saveToCloud();
-        }
-    }
-
-    function addNewAccount() {
-        const name = prompt("নতুন খতিয়ানের নাম:");
-        if (name) {
-            accounts.push({ name, address: prompt("ঠিকানা:"), sang: prompt("সাং:"), type: "party", years: {} });
-            saveToCloud();
-        }
-    }
-
-    function editAccountInfo(i) {
-        const n = prompt("নাম সংশোধন:", accounts[i].name);
-        if (n) {
-            accounts[i].name = n;
-            accounts[i].address = prompt("ঠিকানা সংশোধন:", accounts[i].address);
-            accounts[i].sang = prompt("সাং সংশোধন:", accounts[i].sang);
-            saveToCloud();
-        }
+        loadMonthFromCloud(activeAccKey, activeYear, activeMonth);
     }
 
     function showIndex() {
-        activeAccIdx = null;
+        // ৩ নম্বর fix: isSaving ও pendingSave reset
+        activeAccKey     = null;
+        activeMonth      = new Date().getMonth();
+        activeYear       = new Date().getFullYear();
+        currentMonthData = { left: [], right: [] };
+        prevClosing      = { left: 0, right: 0 };
+        loadCounter      = 0;
+        isSaving         = false;
+        pendingSave      = false;
         document.getElementById('indexSection').classList.remove('hidden');
         document.getElementById('ledgerSection').classList.add('hidden');
+        document.getElementById('ledgerContent').classList.add('hidden');
     }
-
-    function saveToCloud() {
-        db.ref('ledger_data').set(accounts);
-    }
-
-    // উইন্ডো লোড হলে ক্লাউড থেকে ডাটা নিয়ে আসবে
-    window.onload = syncFromCloud;
 </script>
 </body>
 </html>
