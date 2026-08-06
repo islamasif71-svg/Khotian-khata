@@ -436,7 +436,9 @@
     // ============================================================
     // fetchClosing
     // ============================================================
-    async function fetchClosing(accKey, year, month) {
+    // ২২ নম্বর fix (অপটিমাইজড): একটা মাসে জের সেভ আছে কিনা আর তার ভ্যালু —
+    // দুটোই একবারে বের করে, closing_ts আলাদাভাবে দুইবার read করে না
+    async function fetchClosingIfExists(accKey, year, month) {
         const lsKey   = lsClosingKey(accKey, year, month);
         const lsTsKey = lsClosingTsKey(accKey, year, month);
 
@@ -446,14 +448,15 @@
             firebaseTs = snap.val() || 0;
         } catch(e) {}
 
+        if (firebaseTs === 0) return { found: false, left: 0, right: 0 };
+
         const localTs = parseInt(lsGet(lsTsKey) || '-1');
-
-        if (firebaseTs !== 0 && firebaseTs === localTs) {
+        if (firebaseTs === localTs) {
             const cached = lsGet(lsKey);
-            if (cached) { try { return JSON.parse(cached); } catch(e) {} }
+            if (cached) {
+                try { const c = JSON.parse(cached); return { found: true, left: c.left||0, right: c.right||0 }; } catch(e) {}
+            }
         }
-
-        if (firebaseTs === 0) return { left: 0, right: 0 };
 
         let closing = { left: 0, right: 0 };
         try {
@@ -467,10 +470,12 @@
             lsSet(lsTsKey, String(firebaseTs));
         } catch(e) {
             const cached = lsGet(lsKey);
-            if (cached) { try { return JSON.parse(cached); } catch(e2) {} }
+            if (cached) {
+                try { const c2 = JSON.parse(cached); return { found: true, left: c2.left||0, right: c2.right||0 }; } catch(e2) {}
+            }
         }
 
-        return closing;
+        return { found: true, left: closing.left, right: closing.right };
     }
 
     // ============================================================
@@ -479,48 +484,55 @@
     // মাসগুলোর আসল এন্ট্রি (জাবেদা থেকে আসুক বা খতিয়ান থেকে সরাসরি আসুক,
     // দুটোই) যোগ করে সঠিক জের বের করে আনা।
     // ============================================================
-    async function hasSavedClosing(accKey, year, month) {
-        try {
-            const snap = await db.ref('KhatiyanKhata/meta/closing_ts/' + accKey + '/' + year + '/' + month).once('value');
-            return !!(snap.val());
-        } catch(e) {
-            return false;
-        }
-    }
-
     async function resolvePrevClosing(accKey, year, month) {
         let pm = month - 1, py = year;
         if (pm < 0) { pm = 11; py = year - 1; }
 
-        // ফাস্ট পাথ: ঠিক আগের মাসেই জের সেভ করা থাকলে সরাসরি সেটাই ফেরত (আগের মতোই)
-        if (await hasSavedClosing(accKey, py, pm)) {
-            return await fetchClosing(accKey, py, pm);
-        }
+        // ফাস্ট পাথ: ঠিক আগের মাসেই জের সেভ করা থাকলে সরাসরি সেটাই ফেরত (আগের মতোই, একটাই read)
+        var direct = await fetchClosingIfExists(accKey, py, pm);
+        if (direct.found) return { left: direct.left, right: direct.right };
 
-        // ঠিক আগের মাসে জের নেই — আরও পেছনে গিয়ে শেষ সেভ করা জের খোঁজা হবে
-        var monthsToSum = [];
+        // ঠিক আগের মাসে জের নেই — আরও পেছনে খোঁজা লাগবে। একটা একটা করে না গিয়ে
+        // ১২ মাস করে ব্যাচে (একসাথে/সমান্তরালে) চেক করা হয়, যাতে অনেক মাস পেছনে
+        // যেতে হলেও বারবার অপেক্ষা করে সময় নষ্ট না হয় (নেটওয়ার্ক রাউন্ড-ট্রিপ কম লাগে)
+        var BATCH       = 12;
+        var MAX_BATCHES = 10; // ১২ x ১০ = সর্বোচ্চ ১০ বছর পেছনে খোঁজা হবে
         var cy = py, cm = pm;
-        var anchor = { left: 0, right: 0 };
-        var stepsLeft = 240; // নিরাপত্তার জন্য সর্বোচ্চ ২০ বছর পেছনে খোঁজা হবে
+        var flat = [];       // নতুন থেকে পুরনো ক্রমে { y, m, closing, monthData }
+        var anchorIndex = -1;
 
-        while (stepsLeft > 0) {
-            monthsToSum.push({ y: cy, m: cm });
+        for (var b = 0; b < MAX_BATCHES && anchorIndex === -1; b++) {
+            var batchMonths = [];
+            for (var i = 0; i < BATCH; i++) {
+                batchMonths.push({ y: cy, m: cm });
+                cm--;
+                if (cm < 0) { cm = 11; cy--; }
+            }
 
-            cm--;
-            if (cm < 0) { cm = 11; cy--; }
-            stepsLeft--;
+            var batchResults = await Promise.all(batchMonths.map(function(gm) {
+                return Promise.all([
+                    fetchClosingIfExists(accKey, gm.y, gm.m),
+                    fetchMonth(accKey, gm.y, gm.m)
+                ]).then(function(r) { return { y: gm.y, m: gm.m, closing: r[0], monthData: r[1] }; });
+            }));
 
-            if (await hasSavedClosing(accKey, cy, cm)) {
-                anchor = await fetchClosing(accKey, cy, cm);
-                break;
+            for (var k = 0; k < batchResults.length; k++) {
+                flat.push(batchResults[k]);
+                if (batchResults[k].closing.found) { anchorIndex = flat.length - 1; break; }
             }
         }
 
-        // anchor থেকে শুরু করে পুরনো মাস থেকে নতুন মাসের দিকে আসল এন্ট্রিগুলো যোগ করা
-        var running = { left: anchor.left || 0, right: anchor.right || 0 };
-        for (var i = monthsToSum.length - 1; i >= 0; i--) {
-            var gm = monthsToSum[i];
-            var monthData = await fetchMonth(accKey, gm.y, gm.m);
+        var anchorVal = { left: 0, right: 0 };
+        var upto = flat.length; // অ্যাংকর না পেলে চেক করা সব মাসই যোগ হবে
+        if (anchorIndex !== -1) {
+            anchorVal = { left: flat[anchorIndex].closing.left, right: flat[anchorIndex].closing.right };
+            upto = anchorIndex; // অ্যাংকর মাস নিজে বাদ, তার পরের মাস থেকে যোগ শুরু
+        }
+
+        // অ্যাংকর থেকে শুরু করে পুরনো মাস থেকে নতুন মাসের দিকে আসল এন্ট্রিগুলো যোগ করা
+        var running = { left: anchorVal.left || 0, right: anchorVal.right || 0 };
+        for (var idx = upto - 1; idx >= 0; idx--) {
+            var monthData = flat[idx].monthData;
             var sumLeft  = (monthData.left  || []).reduce(function(s,r){ return s + toTaka(r.amt); }, 0);
             var sumRight = (monthData.right || []).reduce(function(s,r){ return s + toTaka(r.amt); }, 0);
             running = { left: toTaka(running.left + sumLeft), right: toTaka(running.right + sumRight) };
