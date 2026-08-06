@@ -434,11 +434,9 @@
     }
 
     // ============================================================
-    // fetchClosing
+    // fetchClosing — আগের মাসের closing আনো (timestamp cache সহ)
     // ============================================================
-    // ২২ নম্বর fix (অপটিমাইজড): একটা মাসে জের সেভ আছে কিনা আর তার ভ্যালু —
-    // দুটোই একবারে বের করে, closing_ts আলাদাভাবে দুইবার read করে না
-    async function fetchClosingIfExists(accKey, year, month) {
+    async function fetchClosing(accKey, year, month) {
         const lsKey   = lsClosingKey(accKey, year, month);
         const lsTsKey = lsClosingTsKey(accKey, year, month);
 
@@ -448,16 +446,22 @@
             firebaseTs = snap.val() || 0;
         } catch(e) {}
 
+        // closing নেই এই মাসে
         if (firebaseTs === 0) return { found: false, left: 0, right: 0 };
 
+        // cache হিট
         const localTs = parseInt(lsGet(lsTsKey) || '-1');
         if (firebaseTs === localTs) {
             const cached = lsGet(lsKey);
             if (cached) {
-                try { const c = JSON.parse(cached); return { found: true, left: c.left||0, right: c.right||0 }; } catch(e) {}
+                try {
+                    const c = JSON.parse(cached);
+                    return { found: true, left: c.left || 0, right: c.right || 0 };
+                } catch(e) {}
             }
         }
 
+        // Firebase থেকে নামাও
         let closing = { left: 0, right: 0 };
         try {
             const snap = await db.ref('KhatiyanKhata/meta/closing/' + accKey + '/' + year + '/' + month).once('value');
@@ -471,7 +475,10 @@
         } catch(e) {
             const cached = lsGet(lsKey);
             if (cached) {
-                try { const c2 = JSON.parse(cached); return { found: true, left: c2.left||0, right: c2.right||0 }; } catch(e2) {}
+                try {
+                    const c2 = JSON.parse(cached);
+                    return { found: true, left: c2.left || 0, right: c2.right || 0 };
+                } catch(e2) {}
             }
         }
 
@@ -479,77 +486,30 @@
     }
 
     // ============================================================
-    // ২২ নম্বর fix: ঠিক আগের মাসে জের সেভ করা না থাকলে (মাস খালি ছিল, বা
-    // জাবেদা খাতা থেকে এন্ট্রি এসেছিল কিন্তু জের সেভ হয়নি) — আরও পেছনের
-    // মাসগুলোর আসল এন্ট্রি (জাবেদা থেকে আসুক বা খতিয়ান থেকে সরাসরি আসুক,
-    // দুটোই) যোগ করে সঠিক জের বের করে আনা।
+    // resolvePrevClosing — একটা একটা করে পেছনে গিয়ে closing খোঁজো
+    // closing পাওয়া গেলে সেটা return করো — download minimum
     // ============================================================
     async function resolvePrevClosing(accKey, year, month) {
         let pm = month - 1, py = year;
         if (pm < 0) { pm = 11; py = year - 1; }
 
-        // ফাস্ট পাথ: ঠিক আগের মাসেই জের সেভ করা থাকলে সরাসরি সেটাই ফেরত (আগের মতোই, একটাই read)
-        var direct = await fetchClosingIfExists(accKey, py, pm);
-        if (direct.found) return { left: direct.left, right: direct.right };
-
-        // ঠিক আগের মাসে জের নেই — আরও পেছনে খোঁজা লাগবে। একটা একটা করে না গিয়ে
-        // ১২ মাস করে ব্যাচে (একসাথে/সমান্তরালে) চেক করা হয়, যাতে অনেক মাস পেছনে
-        // যেতে হলেও বারবার অপেক্ষা করে সময় নষ্ট না হয় (নেটওয়ার্ক রাউন্ড-ট্রিপ কম লাগে)
-        var BATCH       = 12;
-        var MAX_BATCHES = 10; // ১২ x ১০ = সর্বোচ্চ ১০ বছর পেছনে খোঁজা হবে
+        // সর্বোচ্চ ১০ বছর পেছনে খোঁজো
+        var MAX_MONTHS = 120;
         var cy = py, cm = pm;
-        var flat = [];       // নতুন থেকে পুরনো ক্রমে { y, m, closing, monthData }
-        var anchorIndex = -1;
 
-        for (var b = 0; b < MAX_BATCHES && anchorIndex === -1; b++) {
-            var batchMonths = [];
-            for (var i = 0; i < BATCH; i++) {
-                batchMonths.push({ y: cy, m: cm });
-                cm--;
-                if (cm < 0) { cm = 11; cy--; }
+        for (var i = 0; i < MAX_MONTHS; i++) {
+            // শুধু closing_ts চেক — মাত্র ১৩ bytes
+            var result = await fetchClosing(accKey, cy, cm);
+            if (result.found) {
+                return { left: result.left, right: result.right };
             }
-
-            var batchResults = await Promise.all(batchMonths.map(function(gm) {
-                return Promise.all([
-                    fetchClosingIfExists(accKey, gm.y, gm.m),
-                    fetchMonth(accKey, gm.y, gm.m)
-                ]).then(function(r) { return { y: gm.y, m: gm.m, closing: r[0], monthData: r[1] }; });
-            }));
-
-            for (var k = 0; k < batchResults.length; k++) {
-                flat.push(batchResults[k]);
-                if (batchResults[k].closing.found) { anchorIndex = flat.length - 1; break; }
-            }
+            // পেছনে এক মাস যাও
+            cm--;
+            if (cm < 0) { cm = 11; cy--; }
         }
 
-        var anchorVal = { left: 0, right: 0 };
-        var upto = flat.length; // অ্যাংকর না পেলে চেক করা সব মাসই যোগ হবে
-        if (anchorIndex !== -1) {
-            anchorVal = { left: flat[anchorIndex].closing.left, right: flat[anchorIndex].closing.right };
-            upto = anchorIndex; // অ্যাংকর মাস নিজে বাদ, তার পরের মাস থেকে যোগ শুরু
-        }
-
-        // অ্যাংকর থেকে শুরু করে পুরনো মাস থেকে নতুন মাসের দিকে আসল এন্ট্রিগুলো যোগ করা
-        var running = { left: anchorVal.left || 0, right: anchorVal.right || 0 };
-        for (var idx = upto - 1; idx >= 0; idx--) {
-            var monthData = flat[idx].monthData;
-            var sumLeft  = (monthData.left  || []).reduce(function(s,r){ return s + toTaka(r.amt); }, 0);
-            var sumRight = (monthData.right || []).reduce(function(s,r){ return s + toTaka(r.amt); }, 0);
-            running = { left: toTaka(running.left + sumLeft), right: toTaka(running.right + sumRight) };
-        }
-
-        // পরেরবার দ্রুত পথেই পাওয়া যায়, তাই এখনই py/pm মাসের জের হিসেবে সেভ করে রাখা
-        try {
-            var closingTs = Date.now();
-            await db.ref('KhatiyanKhata/meta/closing/'    + accKey + '/' + py + '/' + pm).set(running);
-            await db.ref('KhatiyanKhata/meta/closing_ts/' + accKey + '/' + py + '/' + pm).set(closingTs);
-            lsSet(lsClosingKey(accKey, py, pm),   JSON.stringify(running));
-            lsSet(lsClosingTsKey(accKey, py, pm), String(closingTs));
-        } catch(e) {
-            // সেভ ব্যর্থ হলেও এখনকার জের ঠিকই দেখানো হবে, শুধু পরেরবার আবার হিসাব হবে
-        }
-
-        return running;
+        // কোনো closing পাওয়া যায়নি — জের শূন্য
+        return { left: 0, right: 0 };
     }
 
     // ============================================================
@@ -654,7 +614,9 @@
     }
 
     // ============================================================
-    // updateFutureClosings
+    // updateFutureClosings — entry আছে বা নেই সব মাসের closing forward করো
+    // খালি মাসে আগের closing টাই forward হবে
+    // এতে যেকোনো মাস খুললে সরাসরি আগের মাসের closing পাওয়া যাবে
     // ============================================================
     async function updateFutureClosings(accKey, year, month, prevCl) {
         var m = month + 1, y = year;
@@ -665,6 +627,7 @@
         var runningPrev = prevCl;
 
         while (y < nowYear || (y === nowYear && m <= nowMonth)) {
+            // এই মাসে entry আছে কিনা চেক করো
             var fbTs = 0;
             try {
                 var snap = await db.ref('KhatiyanKhata/meta/month_ts/' + accKey + '/' + y + '/' + m).once('value');
@@ -672,9 +635,19 @@
             } catch(e) {}
 
             if (fbTs !== 0) {
+                // entry আছে — data নামাও, closing calculate করো
                 var monthData = await fetchMonth(accKey, y, m);
                 var result    = await saveClosingWithRetry(accKey, y, m, monthData, runningPrev);
                 if (result) runningPrev = result;
+            } else {
+                // entry নেই — আগের closing টাই forward করো (খুব ছোট write)
+                try {
+                    var closingTs = Date.now();
+                    await db.ref('KhatiyanKhata/meta/closing/'    + accKey + '/' + y + '/' + m).set(runningPrev);
+                    await db.ref('KhatiyanKhata/meta/closing_ts/' + accKey + '/' + y + '/' + m).set(closingTs);
+                    lsSet(lsClosingKey(accKey, y, m),   JSON.stringify(runningPrev));
+                    lsSet(lsClosingTsKey(accKey, y, m), String(closingTs));
+                } catch(e) {}
             }
 
             m++;
