@@ -373,9 +373,8 @@
         try {
             const monthData = await fetchMonth(accKey, year, month);
 
-            let pm = month - 1, py = year;
-            if (pm < 0) { pm = 11; py = year - 1; }
-            const closing = await fetchClosing(accKey, py, pm);
+            // ২২ নম্বর fix: শুধু ঠিক আগের মাস না, দরকার হলে আরও পেছনে গিয়ে সঠিক জের বের করা
+            const closing = await resolvePrevClosing(accKey, year, month);
 
             if (myCounter !== loadCounter) return;
 
@@ -472,6 +471,73 @@
         }
 
         return closing;
+    }
+
+    // ============================================================
+    // ২২ নম্বর fix: ঠিক আগের মাসে জের সেভ করা না থাকলে (মাস খালি ছিল, বা
+    // জাবেদা খাতা থেকে এন্ট্রি এসেছিল কিন্তু জের সেভ হয়নি) — আরও পেছনের
+    // মাসগুলোর আসল এন্ট্রি (জাবেদা থেকে আসুক বা খতিয়ান থেকে সরাসরি আসুক,
+    // দুটোই) যোগ করে সঠিক জের বের করে আনা।
+    // ============================================================
+    async function hasSavedClosing(accKey, year, month) {
+        try {
+            const snap = await db.ref('KhatiyanKhata/meta/closing_ts/' + accKey + '/' + year + '/' + month).once('value');
+            return !!(snap.val());
+        } catch(e) {
+            return false;
+        }
+    }
+
+    async function resolvePrevClosing(accKey, year, month) {
+        let pm = month - 1, py = year;
+        if (pm < 0) { pm = 11; py = year - 1; }
+
+        // ফাস্ট পাথ: ঠিক আগের মাসেই জের সেভ করা থাকলে সরাসরি সেটাই ফেরত (আগের মতোই)
+        if (await hasSavedClosing(accKey, py, pm)) {
+            return await fetchClosing(accKey, py, pm);
+        }
+
+        // ঠিক আগের মাসে জের নেই — আরও পেছনে গিয়ে শেষ সেভ করা জের খোঁজা হবে
+        var monthsToSum = [];
+        var cy = py, cm = pm;
+        var anchor = { left: 0, right: 0 };
+        var stepsLeft = 240; // নিরাপত্তার জন্য সর্বোচ্চ ২০ বছর পেছনে খোঁজা হবে
+
+        while (stepsLeft > 0) {
+            monthsToSum.push({ y: cy, m: cm });
+
+            cm--;
+            if (cm < 0) { cm = 11; cy--; }
+            stepsLeft--;
+
+            if (await hasSavedClosing(accKey, cy, cm)) {
+                anchor = await fetchClosing(accKey, cy, cm);
+                break;
+            }
+        }
+
+        // anchor থেকে শুরু করে পুরনো মাস থেকে নতুন মাসের দিকে আসল এন্ট্রিগুলো যোগ করা
+        var running = { left: anchor.left || 0, right: anchor.right || 0 };
+        for (var i = monthsToSum.length - 1; i >= 0; i--) {
+            var gm = monthsToSum[i];
+            var monthData = await fetchMonth(accKey, gm.y, gm.m);
+            var sumLeft  = (monthData.left  || []).reduce(function(s,r){ return s + toTaka(r.amt); }, 0);
+            var sumRight = (monthData.right || []).reduce(function(s,r){ return s + toTaka(r.amt); }, 0);
+            running = { left: toTaka(running.left + sumLeft), right: toTaka(running.right + sumRight) };
+        }
+
+        // পরেরবার দ্রুত পথেই পাওয়া যায়, তাই এখনই py/pm মাসের জের হিসেবে সেভ করে রাখা
+        try {
+            var closingTs = Date.now();
+            await db.ref('KhatiyanKhata/meta/closing/'    + accKey + '/' + py + '/' + pm).set(running);
+            await db.ref('KhatiyanKhata/meta/closing_ts/' + accKey + '/' + py + '/' + pm).set(closingTs);
+            lsSet(lsClosingKey(accKey, py, pm),   JSON.stringify(running));
+            lsSet(lsClosingTsKey(accKey, py, pm), String(closingTs));
+        } catch(e) {
+            // সেভ ব্যর্থ হলেও এখনকার জের ঠিকই দেখানো হবে, শুধু পরেরবার আবার হিসাব হবে
+        }
+
+        return running;
     }
 
     // ============================================================
